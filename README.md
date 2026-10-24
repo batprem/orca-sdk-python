@@ -46,6 +46,14 @@ asyncio.run(main())
 
 `AsyncOrca` has the same methods and signatures as `Orca`, but each command must be awaited. It runs the CLI with `asyncio.create_subprocess_exec`. If a command times out or is cancelled, the SDK kills the CLI process.
 
+### Examples
+
+[`examples/`](examples/README.md) has runnable scripts for common tasks: readiness checks, inventory, setting up worktrees, launching an agent and following its output, automations, session search, skills, concurrent async calls and error handling. They are read-only unless you pass `--apply`:
+
+```bash
+uv run examples/check-status/main.py
+```
+
 ## Finding the `orca` binary
 
 The binary is located the first time it is needed, checking in this order:

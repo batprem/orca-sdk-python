@@ -39,7 +39,7 @@ build-backend = "hatchling.build"
 packages = ["src/orca_sdk"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/orca_sdk", "scripts", "tests", "README.md", "LICENSE"]
+include = ["src/orca_sdk", "scripts", "tests", "examples", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
