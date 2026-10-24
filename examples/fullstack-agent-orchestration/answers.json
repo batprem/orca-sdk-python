@@ -1,0 +1,20 @@
+{
+  "name": "Teamboard",
+  "idea": "A lightweight task board for small teams: projects hold tasks, tasks move across To do / Doing / Done, and teammates comment on them.",
+  "features": [
+    "Create projects and invite teammates by email",
+    "Create, edit, assign and move tasks between To do, Doing and Done",
+    "Comment on tasks",
+    "Filter a project's board by assignee and status"
+  ],
+  "users_auth": "Email and password sign-up with JWT bearer tokens. Two roles per project: owner and member.",
+  "entities": [
+    "project: name, description, owner_id, created_at",
+    "task: project_id, title, description, status, assignee_id, due_date",
+    "comment: task_id, author_id, body, created_at"
+  ],
+  "frontend": "React + TypeScript + Vite",
+  "backend": "Python FastAPI",
+  "database": "PostgreSQL with Alembic migrations",
+  "deployment": "Docker images deployed to Fly.io; GitHub Actions for CI"
+}

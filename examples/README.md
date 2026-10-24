@@ -18,6 +18,7 @@ Every example is **read-only by default**. Anything that changes Orca state (reg
 | [search-agent-sessions](search-agent-sessions/) | Full-text session search with filters, pagination and resume commands | no |
 | [manage-skills](manage-skills/) | Bundled guides, installed skills, install dry run and real install through `run_command` | with `--apply` |
 | [async-concurrent-dashboard](async-concurrent-dashboard/) | `AsyncOrca` with `asyncio.gather`, `return_exceptions`, a semaphore and per-command timeouts | no |
+| [fullstack-agent-orchestration](fullstack-agent-orchestration/) | Interview → brief + API contract → one worktree and agent per workstream, monitored concurrently with `AsyncOrca`, optional integrator | with `--apply` |
 | [error-handling](error-handling/) | Every exception type, `check=False`, timeouts with retry | no |
 
 The examples find the `orca` binary the same way the SDK does: `$ORCA_BIN`, then `orca` on `PATH`, then the default install path. `tests/test_examples.py` runs every example's read-only path against a mocked subprocess. It also checks that none of them runs a state-changing command without `--apply`.

@@ -12,6 +12,7 @@ import importlib.util
 import json
 import py_compile
 import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -25,6 +26,7 @@ EXAMPLES = sorted(p.parent.name for p in EXAMPLES_DIR.glob("*/main.py"))
 REPO_PATH = "/work/myapp"
 REPO_ID = "repo-1"
 AUTOMATION_ID = "497bafa9-5a97-4f85-9e48-2b211b8f31fa"
+ANSWERS = EXAMPLES_DIR / "fullstack-agent-orchestration" / "answers.json"
 
 TERMINAL = {
     "handle": "term_1",
@@ -266,6 +268,8 @@ def load(name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(f"example_{name.replace('-', '_')}", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    # dataclasses resolve string annotations through sys.modules.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -320,6 +324,16 @@ READ_ONLY_RUNS = [
         ["status", "host list", "project list", "repo list", "worktree ps", "terminal list", "terminal read"],
     ),
     ("error-handling", [], ["repo show", "automations show", "status", "host list", "worktree show"]),
+    (
+        "fullstack-agent-orchestration",
+        [REPO_PATH, "--answers", str(ANSWERS), "--integrate"],
+        ["status", "repo list", "worktree list"],
+    ),
+    (
+        "fullstack-agent-orchestration",
+        ["/work/unregistered", "--answers", str(ANSWERS)],
+        ["status", "repo list"],
+    ),
 ]
 
 
@@ -442,3 +456,96 @@ def test_manage_skills_apply(fake_orca):
 def test_manage_skills_rejects_unknown_skill(fake_orca):
     with pytest.raises(SystemExit):
         load("manage-skills").main(["--install", "not-a-skill"])
+
+
+ORCH_FAST = ["--settle", "0", "--poll", "1", "--status-every", "0.01"]
+WORKSTREAM_KEYS = ["database", "backend", "frontend", "tests-ci", "docs"]
+
+
+def test_fullstack_orchestration_dry_run_prints_calls(fake_orca, capsys, tmp_path):
+    argv = [REPO_PATH, "--answers", str(ANSWERS), "--integrate", "--emit", str(tmp_path)]
+    assert load("fullstack-agent-orchestration").main(argv) == 0
+    out = capsys.readouterr().out
+    fake_orca.assert_read_only()
+    assert "# Teamboard: project brief" in out
+    for key in WORKSTREAM_KEYS:
+        assert f"orca worktree create --repo id:{REPO_ID} --name teamboard-{key} --no-parent --json" in out
+        assert f'--prompt "$(cat {tmp_path}/prompts/{key}.md)" --surface terminal --json' in out
+    assert "--name teamboard-integration" in out
+    assert "orca terminal wait --terminal '<handle>' --for tui-idle --timeout-ms 60000 --json" in out
+    contract = (tmp_path / "contract.md").read_text()
+    assert "| POST | /auth/login |" in contract
+    assert "| PATCH | /tasks/{id} |" in contract
+    assert "- `due_date`: string (ISO 8601)" in contract
+    backend = (tmp_path / "prompts" / "backend.md").read_text()
+    assert "Only create or edit files under `backend/`" in backend and contract in backend
+    assert "`teamboard-docs` (Docs)" in (tmp_path / "prompts" / "integration.md").read_text()
+
+
+def test_fullstack_orchestration_apply(fake_orca, capsys):
+    argv = [REPO_PATH, "--answers", str(ANSWERS), "--max-agents", "2", "--integrate", "--apply", *ORCH_FAST]
+    assert load("fullstack-agent-orchestration").main(argv) == 0
+    out = capsys.readouterr().out
+    assert "repo add" not in fake_orca.commands
+    creates = [args for args in fake_orca.calls if args[:2] == ["worktree", "create"]]
+    names = [args[args.index("--name") + 1] for args in creates]
+    assert names == [f"teamboard-{key}" for key in WORKSTREAM_KEYS] + ["teamboard-integration"]
+    assert all(args[2:4] == ["--repo", f"id:{REPO_ID}"] and "--no-parent" in args for args in creates)
+    launches = [args for args in fake_orca.calls if args[:2] == ["agent", "launch"]]
+    assert len(launches) == 6
+    for args in launches:
+        assert args[2:6] == ["--agent", "claude", "--worktree", "id:repo-2::/work/other-wt"]
+        assert args[-3:] == ["--surface", "terminal", "--json"]
+    assert "/api/v1" in launches[0][launches[0].index("--prompt") + 1]
+    integrator = launches[-1][launches[-1].index("--prompt") + 1]
+    assert "You are the integrator" in integrator and "`teamboard-frontend`" in integrator
+    wait = ["terminal", "wait", "--terminal", "term_2", "--for", "tui-idle", "--timeout-ms", "1000", "--json"]
+    assert fake_orca.calls.count(wait) == 6
+    assert "Summary:" in out and out.count(" idle ") >= 6
+
+
+def test_fullstack_orchestration_apply_registers_repo_and_reports_failures(fake_orca, monkeypatch, capsys):
+    monkeypatch.setitem(RESPONSES, "terminal wait", {"satisfied": False})
+    monkeypatch.setitem(RESPONSES, "terminal read", {"terminal": {"status": "exited", "tail": ["bye"]}})
+    argv = [
+        "/work/other",
+        "--answers",
+        str(ANSWERS),
+        "--agent",
+        "codex",
+        "--integrate",
+        "--apply",
+        *ORCH_FAST,
+    ]
+    assert load("fullstack-agent-orchestration").main(argv) == 1
+    out = capsys.readouterr().out
+    assert fake_orca.calls[fake_orca.commands.index("repo add")][:4] == [
+        "repo",
+        "add",
+        "--path",
+        "/work/other",
+    ]
+    launches = [args for args in fake_orca.calls if args[:2] == ["agent", "launch"]]
+    assert len(launches) == 5 and all(args[3] == "codex" for args in launches)
+    assert "skipping integration" in out
+    assert out.count("terminal exited") == 5
+
+
+def test_fullstack_orchestration_interview(fake_orca, monkeypatch, capsys):
+    module = load("fullstack-agent-orchestration")
+    replies = iter(["Notes", "Share notes", "Write notes", "Tag notes", "", "", "note: title, body", ""])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(replies, ""))
+    monkeypatch.setattr(module.sys, "stdin", type("Tty", (), {"isatty": lambda self: True})())
+    assert module.main([REPO_PATH]) == 0
+    out = capsys.readouterr().out
+    fake_orca.assert_read_only()
+    assert "# Notes: project brief" in out
+    assert "- Tag notes" in out and "| Backend | Python FastAPI |" in out
+    assert "--name notes-backend" in out
+
+
+def test_fullstack_orchestration_needs_answers_without_tty(fake_orca, monkeypatch):
+    module = load("fullstack-agent-orchestration")
+    monkeypatch.setattr(module.sys, "stdin", type("Pipe", (), {"isatty": lambda self: False})())
+    with pytest.raises(SystemExit):
+        module.main([REPO_PATH])
