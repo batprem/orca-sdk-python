@@ -1,4 +1,4 @@
-# orca-sdk
+# orca-cli-sdk
 
 A typed Python SDK for the Orca CLI, with both sync and `asyncio` clients.
 
@@ -9,7 +9,8 @@ A typed Python SDK for the Orca CLI, with both sync and `asyncio` clients.
 - **No runtime dependencies.** Needs Python 3.10+.
 
 ```bash
-uv add orca-sdk        # or: pip install orca-sdk
+uv add orca-cli-sdk        # or: pip install orca-cli-sdk
+# import name: orca_sdk
 ```
 
 ## Quick start

@@ -1,5 +1,5 @@
 [project]
-name = "orca-sdk"
+name = "orca-cli-sdk"
 version = "0.1.0"
 description = "Typed Python SDK (sync and asyncio) for the Orca CLI"
 readme = "README.md"
